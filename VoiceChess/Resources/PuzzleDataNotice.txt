@@ -1,0 +1,8 @@
+Puzzle positions in mate_puzzles.json come from the Lichess puzzle database:
+https://database.lichess.org/
+
+The Lichess database exports are released under Creative Commons CC0. The app
+bundles 500 puzzles each for mate in one, mate in two, and mate in
+three. Puzzles are sampled from the popular, frequently-played positions rated
+800 to 1600, with at most 8 pieces in the starting position, and ordered by
+rating from easiest to hardest.

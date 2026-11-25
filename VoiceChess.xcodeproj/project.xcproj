@@ -10,8 +10,24 @@
       "Base",
     ],
   },
+  "packages": [
+    {
+      "kind": "remote",
+      "repository": "https://github.com/chesskit-app/chesskit-swift",
+      "version": {
+        "up-to-next-major-version": "0.17.0",
+      },
+    }, {
+      "kind": "remote",
+      "repository": "https://github.com/Trickfest/StockfishEmbedded",
+      "version": {
+        "up-to-next-major-version": "1.15.0",
+      },
+    },
+  ],
   "files": [
-    { "kind": "folder", "path": "MyApp", "target-membership": [ "VoiceChess" ] },
+    { "path": "VoiceChess-Info.plist" },
+    { "kind": "folder", "path": "VoiceChess", "target-membership": [ "VoiceChess" ] },
     {
       "kind": "group",
       "name": "Products",
@@ -31,14 +47,31 @@
         "frameworks",
         "resources",
       ],
+      "package-product-members": [
+        {
+          "package": "StockfishEmbedded",
+          "product-name": "SFEngine",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "package": "chesskit-swift",
+          "product-name": "ChessKit",
+          "build-phase": { "build-phase": "frameworks" },
+        },
+      ],
       "build-settings": {
         "CODE_SIGN_STYLE": "Automatic",
         "CURRENT_PROJECT_VERSION": "1",
-        "DEVELOPMENT_TEAM": "K5YPLWCC82",
+        "DEVELOPMENT_TEAM": "A4H5486X49",
         "ENABLE_APP_SANDBOX": "YES",
         "ENABLE_PREVIEWS": "YES",
+        "ENABLE_RESOURCE_ACCESS_AUDIO_INPUT": "YES",
         "ENABLE_USER_SELECTED_FILES": "readonly",
         "GENERATE_INFOPLIST_FILE": "YES",
+        "INFOPLIST_FILE": "VoiceChess-Info.plist",
+        "INFOPLIST_KEY_CFBundleDisplayName": "Voice Chess",
+        "INFOPLIST_KEY_LSApplicationCategoryType": "public.app-category.games",
+        "INFOPLIST_KEY_NSMicrophoneUsageDescription": "Voice Chess uses your microphone to hear your chess moves.",
+        "INFOPLIST_KEY_NSSpeechRecognitionUsageDescription": "Required to parse spoken chess commands into game moves",
         "INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]": "YES",
         "INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]": "YES",
         "INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]": "YES",
@@ -49,8 +82,10 @@
         "INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]": "UIStatusBarStyleDefault",
         "INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad": "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight",
         "INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone": "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight",
+        "IPHONEOS_DEPLOYMENT_TARGET": "27.0",
         "LD_RUNPATH_SEARCH_PATHS": "@executable_path/Frameworks",
         "LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]": "@executable_path/../Frameworks",
+        "MACOSX_DEPLOYMENT_TARGET": "27.0",
         "MARKETING_VERSION": "1.0",
         "PRODUCT_BUNDLE_IDENTIFIER": "devplaceholder.$(PROJECT_UNIQUE_VALUE:identifier).$(PRODUCT_NAME:rfc1034identifier)",
         "PRODUCT_NAME": "$(TARGET_NAME)",
@@ -64,11 +99,13 @@
         "SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY": "YES",
         "SWIFT_VERSION": "5.0",
         "TARGETED_DEVICE_FAMILY": "1,2,7",
+        "XROS_DEPLOYMENT_TARGET": "27.0",
       },
     },
   ],
   "build-settings": {
     "ALWAYS_SEARCH_USER_PATHS": "NO",
+    "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
     "ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS": "YES",
     "CLANG_ANALYZER_NONNULL": "YES",
     "CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION": "YES_AGGRESSIVE",

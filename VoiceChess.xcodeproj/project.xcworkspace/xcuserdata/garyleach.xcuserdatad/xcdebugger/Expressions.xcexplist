@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<VariablesViewState
+   version = "1.0">
+   <ContextStates>
+      <ContextState
+         contextName = "closure #3 in SpeechRecognizerManager.startListening(onPartialResult:):SpeechRecognizerManager.swift">
+      </ContextState>
+      <ContextState
+         contextName = "SpeechRecognizerManager.startListening(onPartialResult:):SpeechRecognizerManager.swift">
+      </ContextState>
+      <ContextState
+         contextName = "closure #1 in SpeechRecognizerManager.startListening(onPartialResult:):SpeechRecognizerManager.swift">
+         <PersistentStrings>
+            <PersistentString
+               value = "buffer.frameLength">
+            </PersistentString>
+         </PersistentStrings>
+      </ContextState>
+      <ContextState
+         contextName = "static SANParser.parse(move:in:):SANParser.swift">
+         <PersistentStrings>
+            <PersistentString
+               value = "isValid(san: san)">
+            </PersistentString>
+         </PersistentStrings>
+      </ContextState>
+      <ContextState
+         contextName = "closure #1 in closure #2 in SpeechRecognizerManager.startListening(onLevel:onResult:):SpeechRecognizerManager.swift">
+      </ContextState>
+   </ContextStates>
+</VariablesViewState>

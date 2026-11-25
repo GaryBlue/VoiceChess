@@ -1,0 +1,24 @@
+{
+  "originHash" : "f58d5b43fd29952c2955510ad02713166041e0845d692743f22e0aa779e78afc",
+  "pins" : [
+    {
+      "identity" : "chesskit-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/chesskit-app/chesskit-swift",
+      "state" : {
+        "revision" : "44ef7a1aa9da25bf0a9606a8960591a4dde3fad2",
+        "version" : "0.17.0"
+      }
+    },
+    {
+      "identity" : "stockfishembedded",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Trickfest/StockfishEmbedded",
+      "state" : {
+        "revision" : "5528cdd73c1b59b9420e9049fccd6546c36eb967",
+        "version" : "1.15.0"
+      }
+    }
+  ],
+  "version" : 3
+}
