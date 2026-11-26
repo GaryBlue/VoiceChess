@@ -4,7 +4,7 @@ import AVFoundation
 import Accelerate
 
 final class SpeechRecognizerManager {
-	private let recognizer = SFSpeechRecognizer()//locale: Locale(identifier: Locale.current.identifier.hasPrefix("en_GB") ? "en-GB" : "en-US"))
+	private let recognizer = SFSpeechRecognizer()
 	private var request: SFSpeechAudioBufferRecognitionRequest?
 	private var task: SFSpeechRecognitionTask?
 	private var engine: AVAudioEngine?

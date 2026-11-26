@@ -89,7 +89,7 @@ import AVFoundation
 			}
 			guard generation == speechGeneration else { return }
 			let utterance = AVSpeechUtterance(string: uppercasedChessSquares(in: text))
-			let language = Locale.current.identifier.hasPrefix("en-GB") ? "en-GB" : "en-US"
+			let language = Locale.current.identifier.replacing("_", with: "-")
 			utterance.voice = await Self.preferredVoice(for: language)
 			guard !Task.isCancelled else { return }
 			utterance.rate = rate
@@ -167,6 +167,9 @@ import AVFoundation
 		return await withCheckedContinuation { continuation in
 			DispatchQueue.global(qos: .userInitiated).async {
 				let matching = AVSpeechSynthesisVoice.speechVoices().filter { $0.language == language }
+				//for i in 0..<matching.count {
+				//	print("Voice \(i): \(matching[i].name) \(matching[i].quality) \(matching[i].description)")
+				//}
 				let best = matching.max {
 					(qualityRank[$0.quality] ?? 0) < (qualityRank[$1.quality] ?? 0)
 				}
