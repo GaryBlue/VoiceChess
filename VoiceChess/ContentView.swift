@@ -45,6 +45,8 @@ struct ContentView: View {
 			" • repeat - repeat the last move announcement\n" +
 			" • undo - undo the last pair of moves\n" +
 			" • call out the board - announce the board state\n" +
+			" • call out rank N - announce the pieces on one rank\n" +
+			" • where are the black bishops? - locate pieces by colour and type\n" +
 			" • call out moves - read the move history\n" +
 			" • revert to move N - ask before discarding moves after N\n" +
 			" • new game - ask to end this session and start a new game\n"
@@ -90,6 +92,7 @@ struct ContentView: View {
 		ProgressView(value: isListening ? coordinator.inputLevel : 0) {
 			Text(coordinator.microphoneName)
 		}
+		.progressViewStyle(CenteredMicrophoneProgressStyle())
 		.accessibilityLabel("Microphone input level, \(coordinator.microphoneName)")
 		.opacity(isListening ? 1 : 0.35)
 		.frame(minHeight: 24)
@@ -101,6 +104,26 @@ struct ContentView: View {
 			.foregroundStyle(coordinator.transcript.isEmpty ? .secondary : .primary)
 			.opacity(coordinator.transcript.isEmpty ? 0.45 : 1)
 			.frame(maxWidth: .infinity, minHeight: 36)
+	}
+}
+
+private struct CenteredMicrophoneProgressStyle: ProgressViewStyle {
+	func makeBody(configuration: Configuration) -> some View {
+		VStack(spacing: 6) {
+			configuration.label
+				.font(.subheadline)
+				.multilineTextAlignment(.center)
+				.frame(maxWidth: .infinity)
+			GeometryReader { geometry in
+				ZStack {
+					Capsule().fill(.quaternary)
+					Capsule()
+						.fill(.tint)
+						.frame(width: geometry.size.width * (configuration.fractionCompleted ?? 0))
+				}
+			}
+			.frame(height: 4)
+		}
 	}
 }
 

@@ -36,6 +36,14 @@ struct SpokenMoveMatcherChecks {
 		for text in ["buy me five coffees", "turn off the light", "good morning"] {
 			precondition(matcher.scores(for: text, candidates: moves).isEmpty, text)
 		}
+		let colours = ["black", "white"]
+		precondition(matcher.closestWord(to: "back", candidates: colours) { [$0] } == "black")
+		precondition(matcher.closestWord(to: "wide", candidates: colours) { [$0] } == "white")
+		let pieces = ["pawn", "knight", "bishop", "rook", "queen", "king"]
+		precondition(matcher.closestWord(to: "nights", candidates: pieces) { [$0, $0 + "s"] } == "knight")
+		precondition(matcher.closestWord(to: "prawns", candidates: pieces) { [$0, $0 + "s"] } == "pawn")
+		precondition(matcher.closestWord(to: "unrelated", candidates: pieces) { [$0, $0 + "s"] } == nil)
+		precondition(matcher.closestWord(to: "night", candidates: ["knight", "nite"]) { [$0] } == nil)
 		print("Spoken move matching checks passed.")
 	}
 }

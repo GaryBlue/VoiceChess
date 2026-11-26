@@ -264,7 +264,7 @@ private actor ListeningBeep {
 		for frame in 0..<frameCount {
 			let time = Double(frame) / Double(sampleRate)
 			let fade = min(1.0, min(Double(frame) / 220.0, Double(frameCount - frame - 1) / 220.0))
-			let sample = sin(2 * Double.pi * 880 * time) * 0.3 * fade
+			let sample = sin(2 * Double.pi * 880 * 0.3 * time) * 0.3 * fade
 			append(Int16(sample * Double(Int16.max)), to: &data)
 		}
 		return data

@@ -162,6 +162,21 @@ struct SpokenMoveMatcher {
 		return Double(row[expected.count]) / Double(expectedWeight)
 	}
 
+	func closestWord<Value>(to word: String, candidates: [Value], spellings: (Value) -> [String]) -> Value? {
+		guard let heard = phones([word]) else { return nil }
+		let ranked = candidates.compactMap { candidate -> (value: Value, cost: Double)? in
+			let cost = spellings(candidate).compactMap { spelling -> Double? in
+				guard let expected = phones([spelling]) else { return nil }
+				return distance(heard, expected)
+			}.min()
+			return cost.map { (candidate, $0) }
+		}.sorted { $0.cost < $1.cost }
+		// A short word offers little evidence, so require a close match with a clear lead.
+		guard let best = ranked.first, best.cost <= 0.6,
+			  ranked.dropFirst().first.map({ $0.cost - best.cost > Self.minimumLead }) ?? true else { return nil }
+		return best.value
+	}
+
 	func scores(for text: String, candidates: [SpokenMoveCandidate]) -> [String: Double] {
 		let words = tokens(text)
 		guard !words.isEmpty, words.count <= 14 else { return [:] }

@@ -139,7 +139,7 @@ final class ChessEngineManager {
 
 	/// Short phrases that match legal spoken moves in the current position.
 	var speechContextualStrings: [String] {
-		let fileNames = ["a", "b", "c", "d", "e", "f", "g", "h"]
+		let fileNames = ["A", "B", "C", "D", "E", "F", "G", "H"]
 		let rankNames = ["one", "two", "three", "four", "five", "six", "seven", "eight"]
 		var destinations = Set<String>()
 		var coordinateDestinations = Set<String>()
@@ -172,7 +172,7 @@ final class ChessEngineManager {
 		}
 
 		let commonPhrases = [
-			"pawn", "knight", "bishop", "rook", "queen", "king", "pawn to", "knight to", "bishop to",
+			"pawn", "pawns", "knight", "bishop", "rook", "queen", "king", "pawn to", "knight to", "bishop to",
 			"rook to", "queen to", "king to", "pawn takes", "knight takes", "bishop takes", "rook takes",
 			"horse to", "horse takes", "castle to", "castle takes", "tower to", "tower takes",
 			"queen takes", "king takes", "takes", "capture", "castles kingside",
@@ -180,7 +180,7 @@ final class ChessEngineManager {
 			"promote to knight", "board", "repeat", "undo", "hint", "suggest a move", "new game", "random", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve",
 			"level one", "level two", "level three", "level four", "level five", "level six", "level seven", "level eight", "level nine", "level ten", "level eleven", "level twelve", "yes", "no",
 			"puzzle", "puzzle mode", "mate in one", "mate in two", "mate in three", "next puzzle", "continue", "repeat", "cancel",
-			"call out moves", "call out the moves", "read the moves", "revert to move"
+			"call out moves", "call out the moves", "read the moves", "revert to move", "where is the", "where are the", "call out rank"
 		]
 		let allPhrases = commonPhrases + legalCapturePhrases.sorted() + destinations.sorted()
 			+ coordinateDestinations.sorted() + legalQuietMovePhrases.sorted()
@@ -234,19 +234,19 @@ final class ChessEngineManager {
 	}
 
 	func spokenBoardRows() -> [String] {
-		var lines: [String] = []
-		for rank in (1...8).reversed() {
-			let squares = Square.allCases
-				.filter { $0.rank.value == rank }
-				.sorted { $0.file.number < $1.file.number }
-			let pieces = squares.compactMap { square -> String? in
-				guard let piece = board.position.piece(at: square) else { return nil }
-			let file = String(describing: square.file.rawValue).uppercased()
+		(1...8).reversed().map { spokenBoardRow(rank: $0) }
+	}
+
+	func spokenBoardRow(rank: Int) -> String {
+		let squares = Square.allCases
+			.filter { $0.rank.value == rank }
+			.sorted { $0.file.number < $1.file.number }
+		let pieces = squares.compactMap { square -> String? in
+			guard let piece = board.position.piece(at: square) else { return nil }
+			let file = square.file.rawValue.uppercased()
 			return "\(piece.color) \(piece.kind) on \(file)"
-			}
-			lines.append(pieces.isEmpty ? "Rank \(rank) is empty." : "Rank \(rank): \(pieces.joined(separator: ". ")).")
 		}
-		return lines
+		return pieces.isEmpty ? "Rank \(rank) is empty." : "Rank \(rank): \(pieces.joined(separator: "; "))."
 	}
 
 	/// Finds a high-value piece that can be captured immediately without a legal recapture.
@@ -738,7 +738,7 @@ final class ChessEngineManager {
 			if lowercased.count == 2,
 			   "abcdefgh".contains(lowercased.first!),
 			   "12345678".contains(lowercased.last!) {
-				return lowercased.uppercased()
+				return "\(lowercased.first!.uppercased()) \(lowercased.last!)"
 			}
 			return value
 		}

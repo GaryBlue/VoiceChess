@@ -658,6 +658,8 @@ final class GameCoordinator: ObservableObject {
 			|| isCancelPuzzleCommand(text) || isPuzzleStartCommand(text)
 			|| isRepeatCommand(text) || isHintCommand(text) || isBoardCalloutCommand(text)
 			|| isMoveHistoryCalloutCommand(text) || isUndoCommand(text)
+			|| pieceLocationWords(text).map({ $0.count >= 2 }) == true
+			|| rankCalloutArgument(text).map({ !$0.isEmpty }) == true
 			|| revertMoveArgument(text).map({ !$0.isEmpty }) == true {
 			return true
 		}
@@ -744,6 +746,14 @@ final class GameCoordinator: ObservableObject {
 		}
 		if isMoveHistoryCalloutCommand(rawText) {
 			callOutMoves()
+			return
+		}
+		if let words = pieceLocationWords(rawText) {
+			announcePieceLocations(words)
+			return
+		}
+		if let argument = rankCalloutArgument(rawText) {
+			callOutRank(argument)
 			return
 		}
 		if let argument = revertMoveArgument(rawText) {
@@ -878,7 +888,7 @@ final class GameCoordinator: ObservableObject {
 	private func announceHelp() {
 		let message: String
 		if gameStarted {
-			message = "Say a chess move, like pawn to E four. Say hint, repeat, undo, call out the board, call out moves, revert to move followed by its number, help, or new game."
+			message = "Say a chess move such as Pawn to E Four.  Other commands: Hint. Repeat. Undo. Call out the board. Call out rank four. Call out moves. Revert to move 3. Or new game. To locate a piece, ask where is the white queen, or where are the black bishops."
 		} else {
 			message = "Say white, black, random, or puzzle for the game choice. For a puzzle, choose mate in one, two, or three. Game difficulties are 1 to 8 (Maia ELO 600 to 2000) 9 to 11 (Stockfish ELO 2200 to 3000) 12 (Stockfish full strength)"
 		}
@@ -895,10 +905,14 @@ final class GameCoordinator: ObservableObject {
 		return ["new game", "start new game", "start a new game", "restart", "restart game", "new chess game"].contains(phrase)
 	}
 
-	private func announce(_ message: String) {
+	private func announce(_ message: String, readout: String? = nil) {
 		lastComputerAnnouncement = message
 		currentState = .speakingResponse(message)
-		synthesizer.speak(message)
+		if let readout {
+			synthesizer.speakReadout(readout)
+		} else {
+			synthesizer.speak(message)
+		}
 	}
 
 	private func makeSavedGameSnapshot() -> SavedGameSnapshot? {
@@ -1053,6 +1067,81 @@ final class GameCoordinator: ObservableObject {
 		beginBoardRead(purpose: .callout, mateIn: nil)
 	}
 
+	private func rankCalloutArgument(_ text: String) -> String? {
+		let words = text.lowercased().split(whereSeparator: \.isWhitespace)
+		guard words.prefix(3).elementsEqual(["call", "out", "rank"]) else { return nil }
+		return words.dropFirst(3).joined(separator: " ").trimmingCharacters(in: CharacterSet(charactersIn: ".,!?"))
+	}
+
+	private func callOutRank(_ argument: String) {
+		guard gameStarted, !puzzleSelectionPending else {
+			announce("Start a game or puzzle to call out a rank.")
+			return
+		}
+		guard let rank = spokenNumber(from: argument, through: 8), (1...8).contains(rank) else {
+			announce("Say call out rank followed by a number from 1 to 8.")
+			return
+		}
+		let message = engine.spokenBoardRow(rank: rank)
+		announce(message, readout: message)
+	}
+
+	private func pieceLocationWords(_ text: String) -> ArraySlice<Substring>? {
+		let words = normalizedCommand(text).split(separator: " ")
+		guard words.count >= 2, words[0] == "where",
+			  ["is", "are", "s", "re"].contains(words[1]) else { return nil }
+		var arguments = words.dropFirst(2)
+		if arguments.first == "the" { arguments = arguments.dropFirst() }
+		if arguments.last == "please" { arguments = arguments.dropLast() }
+		return arguments
+	}
+
+	private func pieceLocationTarget(_ words: ArraySlice<Substring>, matcher: SpokenMoveMatcher? = nil) -> (colour: Piece.Color, kind: Piece.Kind)? {
+		guard words.count == 2, let colourWord = words.first, let pieceWord = words.last else { return nil }
+		func colourNames(_ colour: Piece.Color) -> [String] { [colour.description.lowercased()] }
+		func pieceNames(_ kind: Piece.Kind) -> [String] {
+			let name = kind.description.lowercased()
+			return kind == .pawn ? [name, "pawns", "paws"] : [name, name + "s"]
+		}
+		let colours = Piece.Color.allCases
+		let pieces = Piece.Kind.allCases
+		guard let colour = colours.first(where: { colourNames($0).contains(String(colourWord)) })
+			?? matcher?.closestWord(to: String(colourWord), candidates: colours, spellings: colourNames),
+			  let kind = pieces.first(where: { pieceNames($0).contains(String(pieceWord)) })
+			?? matcher?.closestWord(to: String(pieceWord), candidates: pieces, spellings: pieceNames) else { return nil }
+		return (colour, kind)
+	}
+
+	private func announcePieceLocations(_ words: ArraySlice<Substring>) {
+		guard gameStarted, !puzzleSelectionPending else {
+			announce("Start a game or puzzle to locate pieces.")
+			return
+		}
+		let readings = [words] + alternativeTranscripts.compactMap(pieceLocationWords)
+		let exact = readings.lazy.compactMap { self.pieceLocationTarget($0) }.first
+		guard let (colour, kind) = exact ?? readings.lazy.compactMap({
+			self.pieceLocationTarget($0, matcher: .shared)
+		}).first else {
+			announce("Name a colour and piece. For example, where are the black bishops?")
+			return
+		}
+		let squares = engine.board.position.pieces.compactMap { piece in
+			piece.color == colour && piece.kind == kind ? piece.square : nil
+		}.sorted { $0.notation < $1.notation }
+		let name = "\(colour.description.lowercased()) \(kind.description.lowercased())"
+		guard !squares.isEmpty else {
+			announce("There are no \(name)s on the board.")
+			return
+		}
+		let leadIn = squares.count == 1 ? "The \(name) is on" : "The \(name)s are on"
+		let locations = squares.map { $0.notation.uppercased() }
+			.formatted(.list(type: .and).locale(Locale.current))
+		let spokenLocations = squares.map { square in
+			"\(square.file.rawValue.uppercased()) \(square.rank.value)"
+		}.joined(separator: ", ")
+		announce("\(leadIn) \(locations).", readout: "\(leadIn) \(spokenLocations).")
+	}
+
 	private var recordedMoves: [(historyIndex: Int, author: MoveAuthor, san: String)] {
 		moveHistory.enumerated().compactMap { index, entry in
 			let parts = entry.split(separator: ":", maxSplits: 1)
@@ -1081,14 +1170,14 @@ final class GameCoordinator: ObservableObject {
 		return words.dropFirst(3).joined(separator: " ").trimmingCharacters(in: CharacterSet(charactersIn: ".,!?"))
 	}
 
-	private func moveNumber(from argument: String, through lastMove: Int) -> Int? {
+	private func spokenNumber(from argument: String, through maximum: Int) -> Int? {
 		if let number = Int(argument) { return number }
 		let words = normalizedCommand(argument).split(separator: " ").filter { $0 != "and" }
 		guard !words.isEmpty else { return nil }
 		let formatter = NumberFormatter()
-		formatter.locale = Locale(identifier: "en_US")
+		formatter.locale = Locale.current
 		formatter.numberStyle = .spellOut
-		return (1...lastMove).first { number in
+		return (1...maximum).first { number in
 			guard let name = formatter.string(from: NSNumber(value: number)) else { return false }
 			return normalizedCommand(name).split(separator: " ") == words
 		}
@@ -1100,7 +1189,7 @@ final class GameCoordinator: ObservableObject {
 			announce("No moves have been played yet.")
 			return
 		}
-		guard let number = moveNumber(from: argument, through: moves.count), (1...moves.count).contains(number) else {
+		guard let number = spokenNumber(from: argument, through: moves.count), (1...moves.count).contains(number) else {
 			announce("Say revert to move and a number from 1 to \(moves.count).")
 			return
 		}
