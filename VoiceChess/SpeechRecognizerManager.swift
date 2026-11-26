@@ -4,7 +4,7 @@ import AVFoundation
 import Accelerate
 
 final class SpeechRecognizerManager {
-	private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: Locale.current.identifier.hasPrefix("en-GB") ? "en-GB" : "en-US"))
+	private let recognizer = SFSpeechRecognizer()//locale: Locale(identifier: Locale.current.identifier.hasPrefix("en_GB") ? "en-GB" : "en-US"))
 	private var request: SFSpeechAudioBufferRecognitionRequest?
 	private var task: SFSpeechRecognitionTask?
 	private var engine: AVAudioEngine?
@@ -36,8 +36,8 @@ final class SpeechRecognizerManager {
 						onLevel: @escaping @MainActor (Float) -> Void,
 						onResult: @escaping ([String], Bool, Error?) -> Void) async throws {
 		stopListening()
-		guard let recognizer, recognizer.isAvailable, recognizer.supportsOnDeviceRecognition else {
-			throw RecordingError("On-device English speech recognition is unavailable.")
+		guard let recognizer, recognizer.isAvailable else {
+			throw RecordingError("Speech recognition is unavailable.")
 		}
 		do {
 			try await AudioSessionManager.shared.activate(.recording)

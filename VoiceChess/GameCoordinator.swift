@@ -50,6 +50,36 @@ private enum BoardReadPurpose {
 	case puzzle
 }
 
+private enum SessionConfirmation {
+	case restart
+	case revert(toMove: Int)
+
+	var prompt: String {
+		switch self {
+		case .restart:
+			"Start a new game and end this session? Say yes or no."
+		case .revert(let number):
+			"Revert to move \(number) and discard the later moves? Say yes or no."
+		}
+	}
+}
+
+private enum MoveAuthor: String {
+	case player = "Player"
+	case computer = "AI"
+	case opponent = "Opponent"
+	case opening = "Position"
+
+	var spokenPrefix: String {
+		switch self {
+		case .player: "You played"
+		case .computer: "I played"
+		case .opponent: "The opponent played"
+		case .opening: "The opening move was"
+		}
+	}
+}
+
 enum GameState {
 	case waitingForPlayer
 	case requestingPermission
@@ -75,6 +105,7 @@ final class GameCoordinator: ObservableObject {
 	private var setupStage: GameSetupStage = .color
 	private var setupColorChosen = false
 	private var setupDifficultyChosen = false
+	private var pendingSessionConfirmation: SessionConfirmation?
 	private var playerColor: PlayerColorChoice = .white
 	@Published private(set) var lastComputerAnnouncement: String?
 	private var lastMoveAnnouncement: String?
@@ -140,7 +171,7 @@ final class GameCoordinator: ObservableObject {
 	private var completedPuzzleIDs = GameSessionStore.shared.completedPuzzleIDs
 	private let sessionStore = GameSessionStore.shared
 	private var startupRestoreChecked = false
-	private var resumeAITurnAfterRestore = false
+	private var resumeAITurnAfterAnnouncement = false
 	private let speechManager = SpeechRecognizerManager()
 	let synthesizer = VoiceSynthesizer()
 	let engine = ChessEngineManager()
@@ -218,7 +249,7 @@ final class GameCoordinator: ObservableObject {
 		if !startupRestoreChecked {
 			startupRestoreChecked = true
 			if let snapshot = sessionStore.loadCheckpoint() {
-				if restore(snapshot, message: "Saved game restored.") { return }
+				if restore(snapshot) { return }
 				sessionStore.clearCheckpoint()
 			}
 		}
@@ -232,7 +263,36 @@ final class GameCoordinator: ObservableObject {
 		synthesizer.speak(setupMessage)
 	}
 
+	private func askForSessionConfirmation(_ confirmation: SessionConfirmation) {
+		pendingSessionConfirmation = confirmation
+		let message = confirmation.prompt
+		currentState = .speakingResponse(message)
+		synthesizer.speak(message)
+	}
+
+	private func handleSessionConfirmation(_ confirmation: SessionConfirmation, reply text: String) {
+		switch normalizedCommand(text) {
+		case "yes", "yeah", "yep":
+			pendingSessionConfirmation = nil
+			switch confirmation {
+			case .restart: beginNewGameSetup()
+			case .revert(let number): revertToMove(number)
+			}
+		case "no", "nope", "cancel":
+			pendingSessionConfirmation = nil
+			if boardReadActive {
+				speakBoardReadRow()
+			} else {
+				startPlayerTurn()
+			}
+		default:
+			askForSessionConfirmation(confirmation)
+		}
+	}
+
 	private func beginNewGameSetup() {
+		pendingSessionConfirmation = nil
+		resumeAITurnAfterAnnouncement = false
 		speechManager.stopListening()
 		permissionTask?.cancel()
 		recognitionTimeout?.cancel()
@@ -463,7 +523,12 @@ final class GameCoordinator: ObservableObject {
 		guard shouldResumeListeningAfterBackground else { return }
 		shouldResumeListeningAfterBackground = false
 		guard case .waitingForPlayer = currentState else { return }
-		if startGameAfterColorAnnouncement, let announcement = lastComputerAnnouncement {
+		if let confirmation = pendingSessionConfirmation {
+			askForSessionConfirmation(confirmation)
+			return
+		}
+		if startGameAfterColorAnnouncement || resumeAITurnAfterAnnouncement,
+		   let announcement = lastComputerAnnouncement {
 			currentState = .speakingResponse(announcement)
 			synthesizer.speak(announcement)
 			return
@@ -579,6 +644,9 @@ final class GameCoordinator: ObservableObject {
 	}
 
 	private func isStableSubmissionCandidate(_ text: String) -> Bool {
+		if pendingSessionConfirmation != nil {
+			return ["yes", "yeah", "yep", "no", "nope", "cancel"].contains(normalizedCommand(text))
+		}
 		if isActionableVoiceCommand(text) { return true }
 		guard gameStarted, !puzzleSelectionPending, !boardReadActive else { return false }
 		guard let san = MoveParser.completeLegacySAN(text) else { return false }
@@ -586,10 +654,11 @@ final class GameCoordinator: ObservableObject {
 	}
 
 	private func isActionableVoiceCommand(_ text: String) -> Bool {
-		if isHelpCommand(text) || isNewGameCommand(text) || isSaveGameCommand(text)
-			|| isLoadGameCommand(text) || isCancelPuzzleCommand(text) || isPuzzleStartCommand(text)
+		if isHelpCommand(text) || isNewGameCommand(text)
+			|| isCancelPuzzleCommand(text) || isPuzzleStartCommand(text)
 			|| isRepeatCommand(text) || isHintCommand(text) || isBoardCalloutCommand(text)
-			|| isUndoCommand(text) {
+			|| isMoveHistoryCalloutCommand(text) || isUndoCommand(text)
+			|| revertMoveArgument(text).map({ !$0.isEmpty }) == true {
 			return true
 		}
 		let phrase = normalizedCommand(text)
@@ -640,6 +709,10 @@ final class GameCoordinator: ObservableObject {
 		moveQuestion = nil
 		currentState = .processingPlayerMove(rawText)
 		speechManager.stopListening()
+		if let confirmation = pendingSessionConfirmation {
+			handleSessionConfirmation(confirmation, reply: rawText)
+			return
+		}
 		if isOverlongUtterance(rawText) {
 			transcript = ""
 			startPlayerTurn()
@@ -650,19 +723,31 @@ final class GameCoordinator: ObservableObject {
 			return
 		}
 		if isNewGameCommand(rawText) {
-			beginNewGameSetup()
-			return
-		}
-		if isSaveGameCommand(rawText) {
-			saveGame()
-			return
-		}
-		if isLoadGameCommand(rawText) {
-			loadSavedGame()
+			if gameStarted {
+				askForSessionConfirmation(.restart)
+			} else {
+				beginNewGameSetup()
+			}
 			return
 		}
 		if isCancelPuzzleCommand(rawText) {
-			beginNewGameSetup()
+			if gameStarted && !puzzleModeActive {
+				announce("There is no puzzle in progress.")
+			} else {
+				beginNewGameSetup()
+			}
+			return
+		}
+		if isPuzzleStartCommand(rawText), standardGameInProgress {
+			announce("A game is in progress. Say new game and confirm to choose puzzle mode.")
+			return
+		}
+		if isMoveHistoryCalloutCommand(rawText) {
+			callOutMoves()
+			return
+		}
+		if let argument = revertMoveArgument(rawText) {
+			requestRevert(to: argument)
 			return
 		}
 		if boardReadActive {
@@ -793,7 +878,7 @@ final class GameCoordinator: ObservableObject {
 	private func announceHelp() {
 		let message: String
 		if gameStarted {
-			message = "Say a chess move, like pawn to E four. Say hint, repeat, undo, call out the board, help, or new game."
+			message = "Say a chess move, like pawn to E four. Say hint, repeat, undo, call out the board, call out moves, revert to move followed by its number, help, or new game."
 		} else {
 			message = "Say white, black, random, or puzzle for the game choice. For a puzzle, choose mate in one, two, or three. Game difficulties are 1 to 8 (Maia ELO 600 to 2000) 9 to 11 (Stockfish ELO 2200 to 3000) 12 (Stockfish full strength)"
 		}
@@ -808,50 +893,6 @@ final class GameCoordinator: ObservableObject {
 			.filter { !$0.isEmpty }
 		let phrase = words.joined(separator: " ")
 		return ["new game", "start new game", "start a new game", "restart", "restart game", "new chess game"].contains(phrase)
-	}
-
-	private func isSaveGameCommand(_ text: String) -> Bool {
-		["save game", "save this game"].contains(normalizedCommand(text))
-	}
-
-	private func isLoadGameCommand(_ text: String) -> Bool {
-		["load game", "load saved game", "resume saved game"].contains(normalizedCommand(text))
-	}
-
-	private func saveGame() {
-		guard let snapshot = makeSavedGameSnapshot() else {
-			announce("There is no game in progress to save.")
-			return
-		}
-		if isFinishedSession {
-			sessionStore.clearCheckpoint()
-			beginNewGameSetup()
-			return
-		}
-		sessionStore.saveManualGame(snapshot)
-		sessionStore.saveCheckpoint(snapshot)
-		announce("Game saved.")
-	}
-
-	private func loadSavedGame() {
-		guard let snapshot = sessionStore.loadManualGame() else {
-			announce("There is no saved game.")
-			return
-		}
-		if snapshot.isFinished {
-			sessionStore.clearManualGame()
-			beginNewGameSetup()
-			return
-		}
-		guard restore(snapshot, message: "Saved game loaded.") else {
-			if hasFinishedPosition {
-				sessionStore.clearManualGame()
-				beginNewGameSetup()
-				return
-			}
-			announce("I couldn't load that saved game.")
-			return
-		}
 	}
 
 	private func announce(_ message: String) {
@@ -885,7 +926,7 @@ final class GameCoordinator: ObservableObject {
 	}
 
 	@discardableResult
-	private func restore(_ snapshot: SavedGameSnapshot, message: String) -> Bool {
+	private func restore(_ snapshot: SavedGameSnapshot) -> Bool {
 		let puzzle: ChessPuzzle?
 		if snapshot.mode == .puzzle, let puzzleID = snapshot.puzzleID {
 			puzzle = PuzzleLibrary.puzzle(id: puzzleID)
@@ -923,7 +964,7 @@ final class GameCoordinator: ObservableObject {
 		pendingDangerAnnouncement = nil
 		transcript = ""
 		let playerSide: Piece.Color = playerColor == .white ? .white : .black
-		resumeAITurnAfterRestore = snapshot.mode == .standard
+		resumeAITurnAfterAnnouncement = snapshot.mode == .standard
 			&& engine.board.position.sideToMove != playerSide
 		let restoredMessage: String
 		if let gameOverMessage = snapshot.gameOverMessage {
@@ -932,7 +973,7 @@ final class GameCoordinator: ObservableObject {
 			let progress = puzzleSolved ? " You solved it." : ""
 			restoredMessage = "Puzzle restored.\(progress)"
 		} else {
-			restoredMessage = message
+			restoredMessage = "Saved game restored."
 		}
 		lastComputerAnnouncement = restoredMessage
 		currentState = snapshot.gameOverMessage.map(GameState.gameOver) ?? .speakingResponse(restoredMessage)
@@ -956,6 +997,10 @@ final class GameCoordinator: ObservableObject {
 		return false
 	}
 
+	private var standardGameInProgress: Bool {
+		gameStarted && !puzzleModeActive && !hasFinishedPosition
+	}
+
 	private var hasFinishedPosition: Bool {
 		if case .checkmate = engine.board.state { return true }
 		if case .draw = engine.board.state { return true }
@@ -968,6 +1013,11 @@ final class GameCoordinator: ObservableObject {
 			.filter { !$0.isEmpty }
 		let phrase = words.joined(separator: " ")
 		return ["call out the board", "call out board", "callout the board", "describe the board", "read the board", "board position"].contains(phrase)
+	}
+
+	private func isMoveHistoryCalloutCommand(_ text: String) -> Bool {
+		["call out moves", "call out the moves", "callout moves", "read moves", "read the moves", "read move history"]
+			.contains(normalizedCommand(text))
 	}
 
 	private func isUndoCommand(_ text: String) -> Bool {
@@ -1003,6 +1053,92 @@ final class GameCoordinator: ObservableObject {
 		beginBoardRead(purpose: .callout, mateIn: nil)
 	}
 
+	private var recordedMoves: [(historyIndex: Int, author: MoveAuthor, san: String)] {
+		moveHistory.enumerated().compactMap { index, entry in
+			let parts = entry.split(separator: ":", maxSplits: 1)
+			guard parts.count == 2, let author = MoveAuthor(rawValue: String(parts[0])) else { return nil }
+			let san = parts[1].trimmingCharacters(in: .whitespaces)
+			guard !san.isEmpty else { return nil }
+			return (index, author, san)
+		}
+	}
+
+	private func callOutMoves() {
+		let moves = recordedMoves.enumerated().map { index, move in
+			"Move \(index + 1), \(move.author.spokenPrefix) \(engine.spokenRepresentation(for: move.san))."
+		}
+		guard !moves.isEmpty else {
+			announce("No moves have been played yet.")
+			return
+		}
+		currentState = .speakingResponse("Reading moves…")
+		synthesizer.speakReadout(moves.joined(separator: " "))
+	}
+
+	private func revertMoveArgument(_ text: String) -> String? {
+		let words = text.lowercased().split(whereSeparator: \.isWhitespace)
+		guard words.prefix(3).elementsEqual(["revert", "to", "move"]) else { return nil }
+		return words.dropFirst(3).joined(separator: " ").trimmingCharacters(in: CharacterSet(charactersIn: ".,!?"))
+	}
+
+	private func moveNumber(from argument: String, through lastMove: Int) -> Int? {
+		if let number = Int(argument) { return number }
+		let words = normalizedCommand(argument).split(separator: " ").filter { $0 != "and" }
+		guard !words.isEmpty else { return nil }
+		let formatter = NumberFormatter()
+		formatter.locale = Locale(identifier: "en_US")
+		formatter.numberStyle = .spellOut
+		return (1...lastMove).first { number in
+			guard let name = formatter.string(from: NSNumber(value: number)) else { return false }
+			return normalizedCommand(name).split(separator: " ") == words
+		}
+	}
+
+	private func requestRevert(to argument: String) {
+		let moves = recordedMoves
+		guard gameStarted, !moves.isEmpty else {
+			announce("No moves have been played yet.")
+			return
+		}
+		guard let number = moveNumber(from: argument, through: moves.count), (1...moves.count).contains(number) else {
+			announce("Say revert to move and a number from 1 to \(moves.count).")
+			return
+		}
+		guard number < moves.count else {
+			announce("You are already at move \(number).")
+			return
+		}
+		askForSessionConfirmation(.revert(toMove: number))
+	}
+
+	private func revertToMove(_ number: Int) {
+		let moves = recordedMoves
+		guard number > 0, number < moves.count, engine.revert(toMove: number, fromMove: moves.count) else {
+			announce("I couldn't restore the position after move \(number).")
+			return
+		}
+		moveHistory.removeSubrange((moves[number - 1].historyIndex + 1)...)
+		clearBoardRead()
+		pendingDangerAnnouncement = nil
+		lastMoveAnnouncement = moves.prefix(number).last(where: { $0.author == .computer }).map {
+			"I play \(engine.spokenRepresentation(for: $0.san))."
+		}
+		let message = "Reverted to move \(number)."
+		let opponentToMove = engine.board.position.sideToMove != playerColor.pieceColor
+		if let puzzle = activePuzzle {
+			puzzleSolutionIndex = number
+			puzzleSolved = false
+			if opponentToMove {
+				playPuzzleReply(in: puzzle, after: message + " ")
+				return
+			}
+		} else {
+			resumeAITurnAfterAnnouncement = opponentToMove
+		}
+		announce(message)
+		persistCheckpoint()
+	}
+
 	private func beginBoardRead(purpose: BoardReadPurpose, mateIn: Int?) {
 		boardReadRows = engine.spokenBoardRows()
 		boardReadIndex = 0
@@ -1023,7 +1159,7 @@ final class GameCoordinator: ObservableObject {
 		let message = "\(boardReadRows[boardReadIndex])\(commandReminder)"
 		lastComputerAnnouncement = message
 		currentState = .speakingResponse(message)
-		synthesizer.speakBoard(message)
+		synthesizer.speakReadout(message)
 	}
 
 	private func handleBoardReadCommand(_ text: String) {
@@ -1213,12 +1349,16 @@ final class GameCoordinator: ObservableObject {
 			return
 		}
 		puzzleSolutionIndex += 1
+		playPuzzleReply(in: puzzle)
+	}
+
+	private func playPuzzleReply(in puzzle: ChessPuzzle, after prefix: String = "") {
 		guard puzzle.moves.indices.contains(puzzleSolutionIndex),
 			  let reply = engine.applyAIMove(puzzle.moves[puzzleSolutionIndex]) else {
 			puzzleSolved = true
 			markActivePuzzleCompleted()
 			persistCheckpoint()
-			let message = "Correct. You found the solution. Say next puzzle for another one."
+			let message = prefix + "Correct. You found the solution. Say next puzzle for another one."
 			lastComputerAnnouncement = message
 			currentState = .speakingResponse(message)
 			synthesizer.speak(message)
@@ -1227,7 +1367,7 @@ final class GameCoordinator: ObservableObject {
 		moveHistory.append("Opponent: \(reply.san)")
 		puzzleSolutionIndex += 1
 		persistCheckpoint()
-		let message = "The opponent plays \(engine.spokenRepresentation(for: reply.san)). Your move."
+		let message = prefix + "The opponent plays \(engine.spokenRepresentation(for: reply.san)). Your move."
 		lastComputerAnnouncement = message
 		currentState = .speakingResponse(message)
 		synthesizer.speak(message)
@@ -1263,7 +1403,7 @@ final class GameCoordinator: ObservableObject {
 		}
 	}
 
-	private func clearPuzzleMode() {
+	private func clearBoardRead() {
 		boardReadAfterPuzzleRestore = false
 		boardReadRows = []
 		boardReadIndex = 0
@@ -1271,6 +1411,10 @@ final class GameCoordinator: ObservableObject {
 		boardCommandReminderPending = false
 		boardReadPurpose = nil
 		boardReadMateCount = nil
+	}
+
+	private func clearPuzzleMode() {
+		clearBoardRead()
 		puzzleSelectionPending = false
 		puzzleModeActive = false
 		activePuzzle = nil
@@ -1543,6 +1687,8 @@ final class GameCoordinator: ObservableObject {
 
 	private func handleSpeechFinished() {
 		switch currentState {
+		case .speakingResponse where pendingSessionConfirmation != nil:
+			startPlayerTurn()
 		case .speakingResponse:
 			if let announcement = pendingDangerAnnouncement {
 				pendingDangerAnnouncement = nil
@@ -1574,8 +1720,8 @@ final class GameCoordinator: ObservableObject {
 				} else {
 					processAITurn(playerSan: nil)
 				}
-			} else if resumeAITurnAfterRestore {
-				resumeAITurnAfterRestore = false
+			} else if resumeAITurnAfterAnnouncement {
+				resumeAITurnAfterAnnouncement = false
 				processAITurn(playerSan: nil)
 			} else {
 				startPlayerTurn()

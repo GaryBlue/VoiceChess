@@ -30,7 +30,6 @@ final class GameSessionStore {
 
 	private let defaults = UserDefaults.standard
 	private let checkpointKey = "voicechess.game.checkpoint.v1"
-	private let savedGameKey = "voicechess.game.saved.v1"
 	private let completedPuzzlesKey = "voicechess.puzzles.completed.v1"
 
 	private init() {}
@@ -60,18 +59,5 @@ final class GameSessionStore {
 
 	func clearCheckpoint() {
 		defaults.removeObject(forKey: checkpointKey)
-	}
-
-	func saveManualGame(_ snapshot: SavedGameSnapshot) {
-		defaults.set(try? JSONEncoder().encode(snapshot), forKey: savedGameKey)
-	}
-
-	func clearManualGame() {
-		defaults.removeObject(forKey: savedGameKey)
-	}
-
-	func loadManualGame() -> SavedGameSnapshot? {
-		guard let data = defaults.data(forKey: savedGameKey) else { return nil }
-		return try? JSONDecoder().decode(SavedGameSnapshot.self, from: data)
 	}
 }

@@ -12,7 +12,7 @@ struct ContentView: View {
 	var body: some View {
 		VStack(spacing: 20) {
 			Text("Voice Chess")
-				.font(.title)
+				.font(.largeTitle)
 				.bold()
 			StatusCard(state: coordinator.currentState)
 			microphoneMeter
@@ -45,7 +45,9 @@ struct ContentView: View {
 			" • repeat - repeat the last move announcement\n" +
 			" • undo - undo the last pair of moves\n" +
 			" • call out the board - announce the board state\n" +
-			" • new game - start a new game\n"
+			" • call out moves - read the move history\n" +
+			" • revert to move N - ask before discarding moves after N\n" +
+			" • new game - ask to end this session and start a new game\n"
 		} else {
 			"White: play as white\n" +
 			"Black: play as black\n" +

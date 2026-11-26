@@ -180,7 +180,7 @@ final class ChessEngineManager {
 			"promote to knight", "board", "repeat", "undo", "hint", "suggest a move", "new game", "random", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve",
 			"level one", "level two", "level three", "level four", "level five", "level six", "level seven", "level eight", "level nine", "level ten", "level eleven", "level twelve", "yes", "no",
 			"puzzle", "puzzle mode", "mate in one", "mate in two", "mate in three", "next puzzle", "continue", "repeat", "cancel",
-			"save game", "load game", "resume saved game"
+			"call out moves", "call out the moves", "read the moves", "revert to move"
 		]
 		let allPhrases = commonPhrases + legalCapturePhrases.sorted() + destinations.sorted()
 			+ coordinateDestinations.sorted() + legalQuietMovePhrases.sorted()
@@ -192,6 +192,14 @@ final class ChessEngineManager {
 	func undoLastMove() -> Bool {
 		guard let previousBoard = previousBoards.popLast() else { return false }
 		board = previousBoard
+		return true
+	}
+
+	func revert(toMove number: Int, fromMove currentNumber: Int) -> Bool {
+		guard previousBoards.count == currentNumber, previousBoards.indices.contains(number) else { return false }
+		// The board before move N + 1 is the position after move N.
+		board = previousBoards[number]
+		previousBoards.removeSubrange(number...)
 		return true
 	}
 

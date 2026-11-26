@@ -4,13 +4,13 @@ import AVFoundation
 	private let synthesizer = AVSpeechSynthesizer()
 	private let listeningBeep = ListeningBeep()
 	private var beepTask: Task<Void, Never>?
-	private var boardSegments: [String] = []
-	private var boardSequenceActive = false
-	private var boardSequenceGeneration = 0
+	private var readoutSegments: [String] = []
+	private var readoutActive = false
+	private var speechGeneration = 0
 	private var fallbackUtteranceID: ObjectIdentifier?
 	private var speechPlayer: AVAudioPlayer?
 	private var speechTask: Task<Void, Never>?
-	private var boardPauseTask: Task<Void, Never>?
+	private var readoutPauseTask: Task<Void, Never>?
 	var onSpeechFinished: (() -> Void)?
 	
 	override init() {
@@ -24,16 +24,16 @@ import AVFoundation
 	
 	func stopSpeaking() {
 		beepTask?.cancel()
-		boardPauseTask?.cancel()
-		boardPauseTask = nil
-		boardSequenceGeneration += 1
-		boardSequenceActive = false
+		readoutPauseTask?.cancel()
+		readoutPauseTask = nil
+		speechGeneration += 1
+		readoutActive = false
 		fallbackUtteranceID = nil
 		speechTask?.cancel()
 		speechTask = nil
 		speechPlayer?.stop()
 		speechPlayer = nil
-		boardSegments = []
+		readoutSegments = []
 		if synthesizer.isSpeaking {
 			synthesizer.stopSpeaking(at: .immediate)
 		}
@@ -49,17 +49,17 @@ import AVFoundation
 		speak(text, rate: AVSpeechUtteranceDefaultSpeechRate * 0.95)
 	}
 
-	func speakBoard(_ text: String) {
+	func speakReadout(_ text: String) {
 		stopSpeaking()
 		let segments = text.split(separator: ".")
 			.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
 			.filter { !$0.isEmpty }
 			.map { "\($0)." }
 		guard !segments.isEmpty else { return }
-		boardSegments = segments
-		boardSequenceActive = true
-		let generation = boardSequenceGeneration
-		speakNextBoardSegment(generation: generation, activateSession: true)
+		readoutSegments = segments
+		readoutActive = true
+		let generation = speechGeneration
+		speakNextReadoutSegment(generation: generation, activateSession: true)
 	}
 
 	private func speak(_ text: String, rate: Float) {
@@ -67,17 +67,17 @@ import AVFoundation
 		speakUtterance(text, rate: rate)
 	}
 
-	private func speakNextBoardSegment(generation: Int, activateSession: Bool = false) {
-		guard boardSequenceActive, generation == boardSequenceGeneration,
-			  !boardSegments.isEmpty else { return }
-		let segment = boardSegments.removeFirst()
+	private func speakNextReadoutSegment(generation: Int, activateSession: Bool = false) {
+		guard readoutActive, generation == speechGeneration,
+			  !readoutSegments.isEmpty else { return }
+		let segment = readoutSegments.removeFirst()
 		speakUtterance(segment, rate: AVSpeechUtteranceDefaultSpeechRate * 0.72, activateSession: activateSession)
 	}
 
 	private func speakUtterance(_ text: String, rate: Float, activateSession: Bool = true) {
-		let generation = boardSequenceGeneration
+		let generation = speechGeneration
 		speechTask = Task { @MainActor in
-			guard generation == boardSequenceGeneration else { return }
+			guard generation == speechGeneration else { return }
 			do {
 				if activateSession {
 					try await AudioSessionManager.shared.activate(.playback)
@@ -87,7 +87,7 @@ import AVFoundation
 			} catch {
 				print("Unable to activate speech playback: \(error.localizedDescription)")
 			}
-			guard generation == boardSequenceGeneration else { return }
+			guard generation == speechGeneration else { return }
 			let utterance = AVSpeechUtterance(string: uppercasedChessSquares(in: text))
 			let language = Locale.current.identifier.hasPrefix("en-GB") ? "en-GB" : "en-US"
 			utterance.voice = await Self.preferredVoice(for: language)
@@ -194,18 +194,18 @@ import AVFoundation
 	}
 
 	private func finishUtterance() {
-		if boardSequenceActive {
-			let generation = boardSequenceGeneration
-			if boardSegments.isEmpty {
-				boardSequenceActive = false
+		if readoutActive {
+			let generation = speechGeneration
+			if readoutSegments.isEmpty {
+				readoutActive = false
 				AudioSessionManager.shared.end(.playback)
 				onSpeechFinished?()
 			} else {
-				boardPauseTask = Task { @MainActor [weak self] in
+				readoutPauseTask = Task { @MainActor [weak self] in
 					try? await Task.sleep(for: .milliseconds(850))
-					guard let self, boardSequenceActive, generation == boardSequenceGeneration else { return }
-					boardPauseTask = nil
-					speakNextBoardSegment(generation: generation)
+					guard let self, readoutActive, generation == speechGeneration else { return }
+					readoutPauseTask = nil
+					speakNextReadoutSegment(generation: generation)
 				}
 			}
 			return
